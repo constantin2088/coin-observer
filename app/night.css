@@ -1,0 +1,255 @@
+:root {
+  --background: #0b131c;
+  --foreground: #e7f0f5;
+  --card: #111e29;
+  --popover: #172632;
+  --primary: #64c9d8;
+  --primary-foreground: #09212a;
+  --secondary: #1c2c38;
+  --muted: #1a2a36;
+  --muted-foreground: #9bb0bc;
+  --accent: #243c49;
+  --accent-foreground: #eef7fa;
+  --border: #2a3d49;
+  --ring: #78d3df;
+  color-scheme: dark;
+}
+.up,
+.market-rise {
+  color: #ef8596;
+}
+.down,
+.market-fall {
+  color: #65caaa;
+}
+html {
+  background: #0b131c;
+  scrollbar-color: #405866 #101c25;
+}
+body {
+  background:
+    radial-gradient(ellipse 75% 45% at 72% -5%, #142a3c 0%, transparent 74%),
+    #0b131c;
+  color: #e7f0f5;
+}
+main {
+  color: #e7f0f5;
+}
+header {
+  background: rgba(11, 20, 29, 0.94);
+  border-bottom-color: #273c49;
+}
+.brand-icon {
+  background: linear-gradient(145deg, #58a9ce, #3f7bad);
+  border-color: #588eb2;
+  color: #f4fbff;
+}
+.brand strong,
+h1,
+h2 {
+  color: #edf5f8;
+}
+.eyebrow {
+  color: #7fb6cd;
+}
+.muted,
+small {
+  color: #a1b2bd;
+}
+.status {
+  background: #122c30;
+  border-color: #295655;
+  color: #85d5c6;
+}
+.refresh {
+  background: #192a36;
+  border-color: #334b58;
+  color: #d7e8ef;
+  box-shadow: none;
+}
+.refresh:hover {
+  background: #233946;
+  border-color: #587589;
+}
+.metrics > div,
+.panel,
+.breadth-panel {
+  background: #111e29;
+  border: 1px solid #2a3d49;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+}
+.metrics > div + div {
+  border-left-color: #2a3d49;
+}
+.metrics span,
+.metrics p,
+.breadth-panel p,
+.breadth-buckets span {
+  color: #a1b2bd;
+}
+.breadth-buckets i {
+  opacity: 0.88;
+}
+.breadth-panel > small {
+  color: #8fa4b0;
+}
+.quick-coins button {
+  background: #15242f;
+  border-color: #314654;
+  color: #e2edf2;
+}
+.quick-coins button:hover {
+  background: #1c3140;
+  border-color: #547589;
+}
+.quick-coins button[aria-pressed='true'] {
+  background: #1a3545;
+  border-color: #65a9c4;
+  box-shadow: inset 0 0 0 1px #37657d;
+}
+.coin-facts {
+  border-bottom-color: #2a3d49;
+  color: #a6bbc6;
+}
+.coin-facts b {
+  color: #e0edf2;
+}
+.section-head p,
+.source-note,
+.chart-note,
+.footnote {
+  color: #9cb0bb;
+}
+.price-line > span {
+  background: #1b2d38;
+  border-color: #334b58;
+}
+.chart-toolbar {
+  background: #14232e;
+  border-color: #2a3d49;
+}
+.check-label,
+.form-message {
+  color: #c1d2db;
+}
+[data-slot='tabs-list'] {
+  background: #1b2a35;
+  border-color: #344a56;
+}
+.section-head [data-slot='tabs-trigger'],
+.chart-toolbar [data-slot='tabs-trigger'] {
+  color: #b6c6d0;
+}
+[data-slot='tabs-trigger'][data-active] {
+  background: #294150;
+  color: #edf7fa;
+  box-shadow: none;
+}
+.candle-svg {
+  background: linear-gradient(180deg, #142531, #111e29);
+}
+.tag {
+  background: #183238;
+  border-color: #315e5c;
+  color: #88d8ca;
+}
+.threshold,
+.alert-form {
+  background: #172732;
+  border-color: #344a57;
+  color: #c3d2d9;
+}
+.threshold input,
+.market-filters input,
+.price-input input,
+[data-slot='native-select'] {
+  background: #0e1c26;
+  border-color: #3a5160;
+  color: #e7f0f5;
+}
+.threshold input:hover,
+.market-filters input:hover,
+.price-input input:hover,
+[data-slot='native-select']:hover {
+  border-color: #6a96a6;
+}
+.market-filters input::placeholder,
+.price-input input::placeholder {
+  color: #95aab5;
+}
+.mover:hover,
+tbody tr:hover {
+  background: #1a303c !important;
+  border-color: #3e5a69;
+}
+.table-panel thead {
+  background: #192a36;
+}
+.table-panel [data-slot='table-container'],
+.chart-note {
+  border-top-color: #2c4250;
+}
+th {
+  color: #a8bdc8 !important;
+}
+tbody tr {
+  border-color: #273c49 !important;
+}
+tbody tr[data-state='selected'] {
+  background: #1b3440 !important;
+  box-shadow: inset 3px 0 #73c8d3;
+}
+.coin-mark {
+  background: #264253;
+  border-color: #3d6273;
+  color: #d4eaf0;
+}
+.star,
+.text-button {
+  color: #83cbda;
+}
+.star:hover,
+.text-button:hover {
+  color: #a6e4ed;
+}
+.alert-item {
+  background: #14232e;
+  border-color: #324a57;
+}
+.alert-item:hover {
+  background: #1b303c;
+  border-color: #527081;
+}
+.alert-hit {
+  background: #173831;
+  border-color: #316a58;
+  color: #a9e5ce;
+}
+.notice {
+  background: #3b252e;
+  border-color: #744757;
+  color: #ffd2dc;
+}
+.primary-button {
+  background: #4b9abd;
+  color: #f8fdff;
+}
+.primary-button:hover {
+  background: #5aaccb;
+}
+.alert-form > span,
+.price-input span {
+  color: #a8bbc5;
+}
+.alert-form b {
+  color: #e5f1f5;
+}
+footer {
+  border-top-color: #2b414e;
+  color: #9aadb8;
+}
+@media (max-width: 650px) {
+  .metrics > div + div {
+    border-left-color: #2a3d49;
+  }
+}

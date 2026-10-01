@@ -1,0 +1,191 @@
+.settings-panel {
+  margin-bottom: 16px;
+}
+.settings-panel summary {
+  cursor: pointer;
+  padding: 14px 18px;
+  color: #d4e7f1;
+  font-size: 14px;
+  font-weight: 600;
+}
+.settings-panel summary span {
+  margin-left: 12px;
+  font-weight: 400;
+}
+.settings-body {
+  padding: 0 18px 14px;
+  border-top: 1px solid #263b49;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.settings-row label,
+.mover-filters label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.settings-row button,
+.import-button,
+.chart-navigation button {
+  color: #d4e7f1;
+  background: #172a37;
+  border: 1px solid #324d5d;
+  border-radius: 7px;
+  padding: 7px 12px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.settings-row button[aria-pressed='true'] {
+  background: #244556;
+  border-color: #77b2cc;
+}
+.settings-row button:hover,
+.import-button:hover,
+.chart-navigation button:hover {
+  background: #244556;
+}
+.import-button input {
+  display: none;
+}
+.mover-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 0;
+}
+.mover-filters input[type='number'] {
+  width: 74px;
+  padding: 5px;
+  background: #0e1d28;
+  border: 1px solid #324d5d;
+  border-radius: 5px;
+  color: #d4e7f1;
+}
+input[type='checkbox'] {
+  accent-color: #7db9d2;
+}
+.mover small {
+  font-size: 12px;
+  line-height: 1.65;
+}
+.mover {
+  gap: 8px;
+}
+.mover > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+.quote-legend {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  color: #a8c2d1;
+  margin: 12px 0 18px;
+}
+.alert-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.alert-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.alert-item > div {
+  flex: 1;
+}
+.chart-navigation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.chart-navigation span {
+  font-size: 12px;
+}
+.chart-navigation button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.candle-svg {
+  touch-action: none;
+  cursor: crosshair;
+  user-select: none;
+}
+.alert-history {
+  margin-top: 18px;
+  border-top: 1px solid #263b49;
+  padding-top: 14px;
+  font-size: 14px;
+}
+.alert-history summary {
+  cursor: pointer;
+  color: #b7d4e3;
+}
+.alert-history p {
+  margin: 10px 0;
+  line-height: 1.6;
+}
+.candle-section:fullscreen {
+  padding: 24px;
+  background: #0b131c;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.candle-section:fullscreen .candle-svg {
+  width: 100%;
+  flex: 1;
+  min-height: 350px;
+  max-height: calc(100vh - 180px);
+}
+main[data-density='compact'] .metrics > div {
+  padding: 14px 18px;
+}
+main[data-density='compact'] .metrics strong {
+  font-size: 26px;
+}
+main[data-density='compact'] .breadth-panel {
+  padding: 14px 18px;
+}
+main[data-density='compact'] .panel.chart-panel {
+  padding: 16px 18px;
+}
+main[data-density='compact'] td,
+main[data-density='compact'] th {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+main[data-density='compact'] .heading {
+  margin: 16px 0;
+}
+main[data-density='compact'] .price-line strong {
+  font-size: 30px;
+}
+main[data-density='compact'] .chart {
+  height: 260px;
+}
+main[data-density='compact'] .quick-coins button {
+  padding: 7px 12px;
+}
+@media (max-width: 650px) {
+  .settings-panel summary span {
+    display: block;
+    margin: 5px 0 0;
+  }
+  .chart-navigation button {
+    padding: 6px 9px;
+  }
+  .alert-item {
+    flex-wrap: wrap;
+  }
+}
