@@ -47,3 +47,7 @@ next-env.d.ts
 *.key
 *.p12
 *.pfx
+
+# browser verification artifacts
+/test-results/
+/playwright-report/

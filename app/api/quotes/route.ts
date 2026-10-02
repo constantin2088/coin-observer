@@ -1,15 +1,10 @@
 import { PAIRS, type Coin } from '@/lib/market';
-let cache: { coins: Coin[]; fetchedAt: string } | null = null;
-let at = 0;
+import { sharedFeed, upstream } from '@/lib/feed';
 export async function GET() {
-  if (cache && Date.now() - at < 30000) return Response.json(cache);
-  try {
-    const response = await fetch(
+  return sharedFeed('quotes', 30000, async () => {
+    const data = (await upstream(
       'https://www.okx.com/api/v5/market/tickers?instType=SPOT',
-      { signal: AbortSignal.timeout(10000) },
-    );
-    if (!response.ok) throw new Error();
-    const data = (await response.json()) as {
+    )) as {
       code: string;
       data: { instId: string; last: string; ts: string }[];
     };
@@ -23,7 +18,9 @@ export async function GET() {
         !quote ||
         !Number.isFinite(Number(quote.last)) ||
         Number(quote.last) <= 0 ||
-        !Number.isFinite(Number(quote.ts))
+        !Number.isFinite(Number(quote.ts)) ||
+        Number(quote.ts) <= 0 ||
+        Number(quote.ts) > Date.now() + 60000
       )
         continue;
       coins.push({
@@ -37,10 +34,8 @@ export async function GET() {
         price_change_percentage_24h_in_currency: null,
       });
     }
-    cache = { coins, fetchedAt: new Date().toISOString() };
-    at = Date.now();
-    return Response.json(cache);
-  } catch {
-    return Response.json({ error: 'OKX 报价暂不可用' }, { status: 503 });
-  }
+
+    if (!coins.length) throw new Error('暂无有效报价');
+    return { coins, fetchedAt: new Date().toISOString(), source: 'OKX' };
+  });
 }

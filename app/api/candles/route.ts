@@ -1,5 +1,5 @@
 import { PAIRS, BARS, aggregateYearly, parseCandles } from '@/lib/market';
-const cache = new Map<string, { at: number; payload: unknown }>();
+import { sharedFeed, upstream } from '@/lib/feed';
 export async function GET(request: Request) {
   const params = new URL(request.url).searchParams,
     coin = params.get('coin') || '',
@@ -12,25 +12,14 @@ export async function GET(request: Request) {
     return Response.json({ error: '历史时间无效' }, { status: 400 });
   if (!Object.hasOwn(PAIRS, coin) || !BARS.some((b) => b === bar))
     return Response.json({ error: '暂不支持这个币种或周期' }, { status: 400 });
-  const key = coin + bar + (after || ''),
-    cached = cache.get(key);
-  if (cached && Date.now() - cached.at < 55000)
-    return Response.json(cached.payload);
-  try {
+  const key = 'candles:' + coin + ':' + bar + ':' + (after || '');
+  return sharedFeed(key, 55000, async () => {
     const upstreamBar = bar === '1Y' ? '1M' : bar;
     const limit = 300;
-    const r = await fetch(
+    const raw = (await upstream(
       `https://www.okx.com/api/v5/market/${after ? 'history-candles' : 'candles'}?instId=${PAIRS[coin]}&bar=${upstreamBar}&limit=${limit}${after ? `&after=${after}` : ''}`,
-      {
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': 'CoinObserver/1.0',
-        },
-        signal: AbortSignal.timeout(15000),
-      },
-    );
-    if (!r.ok) throw new Error();
-    const raw = (await r.json()) as { code: string; data: unknown[] };
+      15000,
+    )) as { code: string; data: unknown[] };
     const monthlyOrCandles =
         after && raw.code === '0' && Array.isArray(raw.data) && !raw.data.length
           ? []
@@ -45,13 +34,6 @@ export async function GET(request: Request) {
         source: 'OKX',
         monthlyCandles: bar === '1Y' ? monthlyOrCandles : undefined,
       };
-    if (cache.size > 150) cache.delete(cache.keys().next().value!);
-    cache.set(key, { at: Date.now(), payload });
-    return Response.json(payload);
-  } catch {
-    return Response.json(
-      { error: 'OKX K 线暂不可用，请稍后重试' },
-      { status: 503 },
-    );
-  }
+    return payload;
+  });
 }

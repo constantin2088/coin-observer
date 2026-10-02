@@ -1,7 +1,9 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo, memo } from 'react';
 import { CHART_KEY, readStored, storeValue } from '@/lib/preferences';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { fetchFeed } from '@/lib/client-feed';
+import { macd, rsi } from '@/lib/indicators';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   PAIRS,
@@ -40,7 +42,10 @@ function mergePayload(previous: Payload | null, incoming: Payload): Payload {
       candles: aggregateYearly(monthlyCandles),
     };
   }
-  return { ...incoming, candles: merge(previous.candles, incoming.candles) };
+  return {
+    ...incoming,
+    candles: merge(previous.candles, incoming.candles).slice(-3000),
+  };
 }
 const date = (time: number) =>
   new Date(time).toLocaleString('zh-CN', {
@@ -52,13 +57,21 @@ const date = (time: number) =>
     minute: '2-digit',
     hour12: false,
   });
-export function CandleChart({ coinId }: { coinId: string }) {
+export const CandleChart = memo(function CandleChart({
+  coinId,
+}: {
+  coinId: string;
+}) {
   const [bar, setBar] = useState('1H'),
     [data, setData] = useState<Payload | null>(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [retry, setRetry] = useState(0),
     [ma, setMa] = useState(true),
+    [maFast, setMaFast] = useState(7),
+    [maSlow, setMaSlow] = useState(25),
+    [indicator, setIndicator] = useState('none'),
+    [precision, setPrecision] = useState('integer'),
     [cursor, setCursor] = useState<{ index: number; y: number } | null>(null);
   const [windowSize, setWindowSize] = useState(100),
     [offset, setOffset] = useState(0),
@@ -67,6 +80,15 @@ export function CandleChart({ coinId }: { coinId: string }) {
     [historyEnd, setHistoryEnd] = useState(false),
     [fullscreen, setFullscreen] = useState(false),
     [cached, setCached] = useState(false);
+  const cursorFrame = useRef<number | null>(null);
+  const queuedCursor = useRef<{ index: number; y: number } | null>(null);
+  useEffect(
+    () => () => {
+      if (cursorFrame.current !== null)
+        cancelAnimationFrame(cursorFrame.current);
+    },
+    [],
+  );
   const stage = useRef<HTMLDivElement>(null),
     svgRef = useRef<SVGSVGElement>(null),
     historyController = useRef<AbortController | null>(null),
@@ -82,6 +104,21 @@ export function CandleChart({ coinId }: { coinId: string }) {
       setBar(String(prefs.bar));
     if (typeof prefs.ma === 'boolean') setMa(prefs.ma);
     if (
+      Number.isInteger(prefs.maFast) &&
+      Number(prefs.maFast) >= 2 &&
+      Number(prefs.maFast) <= 200
+    )
+      setMaFast(Number(prefs.maFast));
+    if (
+      Number.isInteger(prefs.maSlow) &&
+      Number(prefs.maSlow) >= 2 &&
+      Number(prefs.maSlow) <= 200
+    )
+      setMaSlow(Number(prefs.maSlow));
+    if (['none', 'macd', 'rsi'].includes(String(prefs.indicator)))
+      setIndicator(String(prefs.indicator));
+    if (prefs.precision === 'auto') setPrecision('auto');
+    if (
       typeof prefs.windowSize === 'number' &&
       prefs.windowSize >= 20 &&
       prefs.windowSize <= 300
@@ -94,8 +131,17 @@ export function CandleChart({ coinId }: { coinId: string }) {
     return () => document.removeEventListener('fullscreenchange', changed);
   }, []);
   useEffect(() => {
-    if (prefsReady) storeValue(CHART_KEY, { bar, ma, windowSize });
-  }, [bar, ma, windowSize, prefsReady]);
+    if (prefsReady)
+      storeValue(CHART_KEY, {
+        bar,
+        ma,
+        windowSize,
+        maFast,
+        maSlow,
+        indicator,
+        precision,
+      });
+  }, [bar, ma, windowSize, prefsReady, maFast, maSlow, indicator, precision]);
   useEffect(() => {
     const element = svgRef.current;
     if (!element) return;
@@ -114,10 +160,18 @@ export function CandleChart({ coinId }: { coinId: string }) {
   }, [data, bar]);
   useEffect(() => {
     if (data && data.pair === PAIRS[coinId] && data.bar === bar)
-      storeValue(`coin-candles-${coinId}-${bar}`, data);
+      storeValue(`coin-candles-${coinId}-${bar}`, {
+        ...data,
+        candles: data.candles.slice(-1500),
+        monthlyCandles: data.monthlyCandles?.slice(-300),
+      });
   }, [data, coinId, bar]);
   async function loadHistory() {
     if (historyController.current || !data || historyEnd) return;
+    if (data.candles.length >= 3000) {
+      setError('已加载 3000 根；切换周期或重新打开图表可重新加载');
+      return;
+    }
     const current = data,
       oldest = (current.monthlyCandles || current.candles)[0]?.time;
     if (!oldest) return;
@@ -182,7 +236,9 @@ export function CandleChart({ coinId }: { coinId: string }) {
       stored &&
         stored.pair === pair &&
         stored.bar === bar &&
-        Array.isArray(stored.candles)
+        Array.isArray(stored.candles) &&
+        stored.candles.length <= 3000 &&
+        stored.candles.every(validCandle)
         ? stored
         : null,
     );
@@ -198,32 +254,28 @@ export function CandleChart({ coinId }: { coinId: string }) {
       running = true;
       setBusy(true);
       try {
-        const r = await fetch(
-          `/api/candles?coin=${encodeURIComponent(coinId)}&bar=${bar}`,
-          {
-            signal: AbortSignal.any([
-              controller.signal,
-              AbortSignal.timeout(18000),
-            ]),
-          },
-        );
-        if (!r.ok) throw new Error();
-        const payload: Payload = await r.json();
+        const payload = await fetchFeed<
+          Payload & { stale?: boolean; message?: string }
+        >(`/api/candles?coin=${encodeURIComponent(coinId)}&bar=${bar}`);
         if (
           payload.pair !== pair ||
           payload.bar !== bar ||
-          !Array.isArray(payload.candles)
+          !Array.isArray(payload.candles) ||
+          !payload.candles.every(validCandle)
         )
           throw new Error();
         if (!disposed) {
           setData((previous) => mergePayload(previous, payload));
-          setCached(false);
-          setError('');
+          setCached(Boolean(payload.stale));
+          setError(payload.stale ? payload.message || 'K 线更新延迟' : '');
         }
-      } catch {
+      } catch (error) {
         if (!disposed) setCached(true);
         if (!disposed)
-          setError('K 线更新失败。已有图表为上次数据，请稍后重试。');
+          setError(
+            (error instanceof Error ? error.message : 'K 线更新失败') +
+              '，已有图表为上次数据。',
+          );
       } finally {
         running = false;
         if (!disposed) setBusy(false);
@@ -231,15 +283,43 @@ export function CandleChart({ coinId }: { coinId: string }) {
     }
     load();
     const timer = setInterval(load, 60000);
+    const resume = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    document.addEventListener('visibilitychange', resume);
     window.addEventListener('online', load);
     return () => {
       disposed = true;
       controller.abort();
       clearInterval(timer);
       window.removeEventListener('online', load);
+      document.removeEventListener('visibilitychange', resume);
       historyController.current?.abort();
     };
   }, [coinId, pair, bar, retry, prefsReady]);
+  const allCandles = useMemo(
+    () => (data?.pair === pair && data.bar === bar ? data.candles : []),
+    [data, pair, bar],
+  );
+  const safeOffset = Math.min(offset, Math.max(0, allCandles.length - 20)),
+    end = allCandles.length - safeOffset,
+    start = Math.max(0, end - windowSize);
+  const candles = useMemo(
+    () => allCandles.slice(start, end),
+    [allCandles, start, end],
+  );
+  const a7 = useMemo(
+    () => movingAverage(allCandles, maFast).slice(start, end),
+    [allCandles, maFast, start, end],
+  );
+  const a25 = useMemo(
+    () => movingAverage(allCandles, maSlow).slice(start, end),
+    [allCandles, maSlow, start, end],
+  );
+  const technical = useMemo(
+    () => ({ macd: macd(allCandles), rsi: rsi(allCandles) }),
+    [allCandles],
+  );
   if (!pair)
     return (
       <div className="empty">
@@ -247,14 +327,7 @@ export function CandleChart({ coinId }: { coinId: string }) {
         {Object.keys(PAIRS).length} 个币种。
       </div>
     );
-  const allCandles =
-      data?.pair === pair && data.bar === bar ? data.candles : [],
-    safeOffset = Math.min(offset, Math.max(0, allCandles.length - 20)),
-    end = allCandles.length - safeOffset,
-    start = Math.max(0, end - windowSize),
-    candles = allCandles.slice(start, end),
-    a7 = movingAverage(allCandles, 7).slice(start, end),
-    a25 = movingAverage(allCandles, 25).slice(start, end);
+
   const low = candles.length ? Math.min(...candles.map((c) => c.low)) : 0,
     high = candles.length ? Math.max(...candles.map((c) => c.high)) : 1,
     pad = Math.max((high - low) * 0.07, high * 0.0001),
@@ -275,8 +348,13 @@ export function CandleChart({ coinId }: { coinId: string }) {
   const cursorPrice = cursor
     ? max - ((cursor.y - top) / (bottom - top)) * (max - min)
     : null;
-  const focusChange = focus
-    ? ((focus.close - focus.open) / focus.open) * 100
+  const readout = focus || candles.at(-1);
+  const formatClose = (n: number) =>
+    precision === 'auto'
+      ? quote(n)
+      : new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(n);
+  const focusChange = readout
+    ? ((readout.close - readout.open) / readout.open) * 100
     : 0;
   const focusChangeText = `${focusChange > 0 ? '+' : ''}${focusChange.toFixed(2)}%`;
   const focusColor =
@@ -305,8 +383,51 @@ export function CandleChart({ coinId }: { coinId: string }) {
         </Tabs>
         <label className="check-label">
           <Checkbox checked={ma} onCheckedChange={(v) => setMa(Boolean(v))} />
-          MA7 / MA25
+          均线
         </label>
+        <label className="indicator-input">
+          MA{' '}
+          <input
+            aria-label="快速均线周期"
+            type="number"
+            min="2"
+            max="200"
+            value={maFast}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isInteger(n) && n >= 2 && n <= 200) setMaFast(n);
+            }}
+          />{' '}
+          /{' '}
+          <input
+            aria-label="慢速均线周期"
+            type="number"
+            min="2"
+            max="200"
+            value={maSlow}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isInteger(n) && n >= 2 && n <= 200) setMaSlow(n);
+            }}
+          />
+        </label>
+        <select
+          aria-label="副图指标"
+          value={indicator}
+          onChange={(e) => setIndicator(e.target.value)}
+        >
+          <option value="none">无副图指标</option>
+          <option value="macd">MACD (12,26,9)</option>
+          <option value="rsi">RSI (14)</option>
+        </select>
+        <select
+          aria-label="收盘价显示精度"
+          value={precision}
+          onChange={(e) => setPrecision(e.target.value)}
+        >
+          <option value="integer">收盘价：整数</option>
+          <option value="auto">收盘价：自动精度</option>
+        </select>
         <button
           onClick={() => setRetry((v) => v + 1)}
           disabled={busy}
@@ -340,7 +461,9 @@ export function CandleChart({ coinId }: { coinId: string }) {
         </button>
         <button
           onClick={() => void loadHistory()}
-          disabled={historyBusy || historyEnd || !data}
+          disabled={
+            historyBusy || historyEnd || !data || allCandles.length >= 3000
+          }
         >
           {historyBusy
             ? '加载历史中…'
@@ -362,6 +485,16 @@ export function CandleChart({ coinId }: { coinId: string }) {
       )}
       {candles.length ? (
         <>
+          <div className="candle-readout" aria-live="off">
+            <time>{readout ? date(readout.time) : '—'}</time>
+            <span>
+              收盘价 <b>{readout ? formatClose(readout.close) : '—'}</b>
+            </span>
+            <strong style={{ color: focusColor }}>{focusChangeText}</strong>
+            {readout && !readout.complete && (
+              <small className="tag">未收盘</small>
+            )}
+          </div>
           <svg
             ref={svgRef}
             className="candle-svg"
@@ -437,7 +570,7 @@ export function CandleChart({ coinId }: { coinId: string }) {
                 setCursor(null);
                 return;
               }
-              setCursor({
+              queuedCursor.current = {
                 index: Math.max(
                   0,
                   Math.min(
@@ -446,10 +579,59 @@ export function CandleChart({ coinId }: { coinId: string }) {
                   ),
                 ),
                 y: local.y,
-              });
+              };
+              if (cursorFrame.current === null)
+                cursorFrame.current = requestAnimationFrame(() => {
+                  cursorFrame.current = null;
+                  setCursor(queuedCursor.current);
+                });
             }}
-            onMouseLeave={() => setCursor(null)}
+            onMouseLeave={() => {
+              queuedCursor.current = null;
+              if (cursorFrame.current !== null) {
+                cancelAnimationFrame(cursorFrame.current);
+                cursorFrame.current = null;
+              }
+              setCursor(null);
+            }}
           >
+            <defs>
+              <clipPath id="price-clip">
+                <rect
+                  x={left}
+                  y={top}
+                  width={right - left}
+                  height={bottom - top}
+                />
+              </clipPath>
+            </defs>
+            {safeOffset === 0 && candles.at(-1) && (
+              <g pointerEvents="none">
+                <line
+                  x1={left}
+                  x2={right}
+                  y1={y(candles.at(-1)!.close)}
+                  y2={y(candles.at(-1)!.close)}
+                  stroke={
+                    candles.at(-1)!.close > candles.at(-1)!.open
+                      ? '#ef8596'
+                      : candles.at(-1)!.close < candles.at(-1)!.open
+                        ? '#65caaa'
+                        : '#9bb0bc'
+                  }
+                  strokeDasharray="2 5"
+                  opacity="0.7"
+                />
+                <text
+                  x={left + 4}
+                  y={Math.max(top + 12, y(candles.at(-1)!.close) - 5)}
+                  fill="#c0d3dd"
+                  fontSize="12"
+                >
+                  最新 {quote(candles.at(-1)!.close)}
+                </text>
+              </g>
+            )}
             {[0, 1, 2, 3, 4].map((i) => {
               const v = min + ((max - min) * i) / 4;
               return (
@@ -506,12 +688,14 @@ export function CandleChart({ coinId }: { coinId: string }) {
             {ma && (
               <>
                 <polyline
+                  clipPath="url(#price-clip)"
                   points={line(a7)}
                   fill="none"
                   stroke="#eac878"
                   strokeWidth="1.5"
                 />
                 <polyline
+                  clipPath="url(#price-clip)"
                   points={line(a25)}
                   fill="none"
                   stroke="#96a6ff"
@@ -581,44 +765,21 @@ export function CandleChart({ coinId }: { coinId: string }) {
                 </text>
               ),
             )}
-            {focus && (
-              <g
-                pointerEvents="none"
-                transform={`translate(${Math.min(right - 176, Math.max(left, x(cursor!.index) + (x(cursor!.index) > right / 2 ? -188 : 12)))},28)`}
-              >
-                <rect
-                  width="176"
-                  height="80"
-                  rx="8"
-                  fill="#1b2d39"
-                  stroke="#608093"
-                />
-                <text x="12" y="21" fill="#b6cbd5" fontSize="12">
-                  {date(focus.time)}
-                </text>
-                <text x="12" y="45" fill="#f1f7fa" fontSize="13">
-                  收盘价{' '}
-                  {new Intl.NumberFormat('en-US', {
-                    maximumFractionDigits: 0,
-                  }).format(focus.close)}
-                </text>
-                <text
-                  x="12"
-                  y="68"
-                  fill={focusColor}
-                  fontSize="16"
-                  fontWeight="600"
-                >
-                  {focusChangeText}
-                </text>
-              </g>
-            )}
           </svg>
+          {indicator !== 'none' && (
+            <IndicatorChart
+              kind={indicator}
+              macd={technical.macd}
+              rsi={technical.rsi}
+              start={start}
+              end={end}
+            />
+          )}
           <div className="chart-note">
             <span>
-              <i className="ma7">MA7</i> / <i className="ma25">MA25</i>：最近 7
-              / 25 根收盘价的简单平均 · 显示 {candles.length} / 已加载{' '}
-              {allCandles.length} 根
+              <i className="ma7">MA{maFast}</i> /{' '}
+              <i className="ma25">MA{maSlow}</i> · 显示 {candles.length} /
+              已加载 {allCandles.length} 根
             </span>
             <span>获取时间 {data ? date(data.fetchedAt) : '—'}</span>
           </div>
@@ -630,4 +791,118 @@ export function CandleChart({ coinId }: { coinId: string }) {
       )}
     </div>
   );
+});
+
+function validCandle(c: unknown): c is Candle {
+  if (!c || typeof c !== 'object') return false;
+  const v = c as Candle;
+  return (
+    [v.time, v.open, v.high, v.low, v.close, v.volume].every(Number.isFinite) &&
+    v.time > 0 &&
+    v.low > 0 &&
+    v.low <= Math.min(v.open, v.close) &&
+    v.high >= Math.max(v.open, v.close) &&
+    v.volume >= 0 &&
+    typeof v.complete === 'boolean'
+  );
 }
+const IndicatorChart = memo(function IndicatorChart({
+  kind,
+  macd: m,
+  rsi: values,
+  start,
+  end,
+}: {
+  kind: string;
+  macd: ReturnType<typeof macd>;
+  rsi: (number | null)[];
+  start: number;
+  end: number;
+}) {
+  const dif = m.dif.slice(start, end),
+    dea = m.dea.slice(start, end),
+    hist = m.histogram.slice(start, end),
+    rs = values.slice(start, end);
+  const count = end - start,
+    step = 804 / Math.max(count, 1),
+    x = (i: number) => 8 + (i + 0.5) * step;
+  const bound = Math.max(
+    1e-12,
+    ...dif.map(Math.abs),
+    ...dea.map(Math.abs),
+    ...hist.map(Math.abs),
+  );
+  const y = (v: number) =>
+    kind === 'rsi' ? 102 - v * 0.8 : 62 - (v / bound) * 38;
+  const points = (items: (number | null)[]) =>
+    items.flatMap((v, i) => (v === null ? [] : [`${x(i)},${y(v)}`])).join(' ');
+  return (
+    <svg
+      className="indicator-chart"
+      viewBox="0 0 900 122"
+      role="img"
+      aria-label={kind === 'rsi' ? 'RSI 14 相对强弱指标' : 'MACD 12 26 9 指标'}
+    >
+      <text x="8" y="14" fill="#a8bcc7" fontSize="12">
+        {kind === 'rsi' ? 'RSI (14)' : 'MACD (12,26,9)'}
+      </text>
+      {kind === 'rsi' ? (
+        <>
+          {[30, 70].map((v) => (
+            <g key={v}>
+              <line
+                x1="8"
+                x2="812"
+                y1={y(v)}
+                y2={y(v)}
+                stroke="#324d5d"
+                strokeDasharray="3 5"
+              />
+              <text x="822" y={y(v) + 4} fill="#a8bcc7" fontSize="12">
+                {v}
+              </text>
+            </g>
+          ))}
+          <polyline
+            points={points(rs)}
+            fill="none"
+            stroke="#b1a4ff"
+            strokeWidth="1.5"
+          />
+        </>
+      ) : (
+        <>
+          <line x1="8" x2="812" y1="62" y2="62" stroke="#324d5d" />
+          {hist.map((v, i) => (
+            <rect
+              key={i}
+              x={x(i) - step * 0.3}
+              width={step * 0.6}
+              y={Math.min(62, y(v))}
+              height={Math.max(1, Math.abs(y(v) - 62))}
+              fill={v > 0 ? '#ef8596' : v < 0 ? '#65caaa' : '#9bb0bc'}
+            />
+          ))}
+          <polyline
+            points={points(dif)}
+            fill="none"
+            stroke="#eac878"
+            strokeWidth="1.3"
+          />
+          <polyline
+            points={points(dea)}
+            fill="none"
+            stroke="#96a6ff"
+            strokeWidth="1.3"
+          />
+          <text x="820" y="43" fill="#eac878" fontSize="12">
+            DIF
+          </text>
+          <text x="820" y="65" fill="#96a6ff" fontSize="12">
+            DEA
+          </text>
+        </>
+      )}
+    </svg>
+  );
+});

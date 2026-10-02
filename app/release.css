@@ -1,0 +1,248 @@
+/* v1.1: a focused chart workspace with quiet secondary controls */
+.version-badge {
+  font-size: 12px;
+  color: #9cc7dc;
+  border: 1px solid #34566a;
+  border-radius: 5px;
+  padding: 2px 6px;
+  letter-spacing: 0.03em;
+}
+.heading {
+  margin: 20px 0 !important;
+}
+.heading h1 {
+  font-size: 27px !important;
+}
+.eyebrow {
+  font-size: 12px !important;
+}
+.metrics {
+  gap: 14px !important;
+  margin-bottom: 16px !important;
+}
+.metrics > div {
+  padding: 18px 22px !important;
+}
+.workspace {
+  grid-template-columns: minmax(0, 1fr) 340px !important;
+  gap: 18px !important;
+  align-items: start;
+}
+.chart-panel {
+  min-width: 0;
+}
+.chart-panel .source-note {
+  margin: 8px 0;
+  font-size: 12px;
+}
+.coin-facts {
+  padding-bottom: 14px;
+  border-bottom: 1px solid #263d4b;
+}
+.segmented {
+  display: flex;
+  gap: 4px;
+  background: #0e1e2a;
+  padding: 4px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+}
+.segmented button {
+  flex: 1;
+  padding: 7px 9px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #9cb7c7;
+  font-size: 14px;
+  cursor: pointer;
+}
+.segmented button[aria-pressed='true'] {
+  background: #234457;
+  border-color: #496d82;
+  color: #e6f3fa;
+}
+.mover-options summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: #abc7d6;
+  padding: 10px 0;
+}
+.movers .threshold {
+  font-size: 14px;
+}
+.mover-list {
+  margin-top: 12px;
+}
+.mover-history-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #263b49;
+  color: #d6e8f1;
+  padding: 10px 0;
+  cursor: pointer;
+  font-size: 14px;
+}
+.mover-history-row small {
+  grid-column: 1/-1;
+  font-size: 12px;
+  color: #91aaba;
+}
+.candle-readout {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 42px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  background: #102330;
+  border: 1px solid #2c4759;
+  border-radius: 7px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.candle-readout time {
+  color: #a9c4d4;
+}
+.candle-readout strong {
+  font-size: 16px;
+}
+.indicator-input {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  color: #b5cddb;
+}
+.indicator-input input {
+  width: 53px;
+  padding: 5px;
+  border-radius: 5px;
+  border: 1px solid #365365;
+  background: #0e1e2a;
+  color: #e5eff5;
+}
+select {
+  background: #142a38;
+  color: #d4e7f1;
+  border: 1px solid #365365;
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 14px;
+  max-width: 100%;
+}
+.chart-toolbar {
+  gap: 10px !important;
+}
+.indicator-chart {
+  width: 100%;
+  height: auto;
+  max-height: 180px;
+  display: block;
+  border-top: 1px solid #263b49;
+}
+.alerts-panel {
+  margin-top: 18px;
+}
+.alerts-panel .section-head p {
+  font-size: 14px;
+  max-width: 800px;
+  line-height: 1.7;
+}
+.alert-list {
+  gap: 10px;
+}
+.alert-item {
+  padding: 14px 16px !important;
+}
+.alert-item > div:first-child {
+  flex: 1;
+  min-width: 220px;
+}
+.alert-item small {
+  display: block;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.alert-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto !important;
+}
+.alert-state {
+  color: #abc7d6;
+}
+.alert-form input {
+  min-width: 140px;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid #86bad1;
+  outline-offset: 3px;
+}
+.table-panel thead {
+  position: sticky;
+  top: 0;
+  background: #122634;
+  z-index: 1;
+}
+.settings-row a {
+  color: #a7cfe3;
+  font-size: 14px;
+}
+.settings-panel {
+  margin-top: 4px;
+}
+@media (max-width: 1050px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .mover-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .mover-filters {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 650px) {
+  .heading h1 {
+    font-size: 24px !important;
+  }
+  .metrics > div {
+    padding: 14px !important;
+  }
+  .mover-list {
+    grid-template-columns: 1fr;
+  }
+  .candle-readout {
+    gap: 8px 14px;
+  }
+  .alert-actions {
+    flex-wrap: wrap;
+  }
+  .alert-item {
+    flex-wrap: wrap;
+  }
+  .version-badge {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

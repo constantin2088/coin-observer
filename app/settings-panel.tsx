@@ -1,4 +1,5 @@
 'use client';
+import { cacheStats, clearMarketCache } from '@/lib/cache';
 import { useState } from 'react';
 import {
   ALERTS_KEY,
@@ -40,11 +41,13 @@ export function SettingsPanel({
   function exportBackup() {
     const data = {
       app: '币观',
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       favorites: readStored('coin-watch', []),
       alerts: readStored(ALERTS_KEY, []),
       history: readStored('coin-alert-history-v2', []),
+      movers: readStored('coin-mover-settings-v3', {}),
+      moverHistory: readStored('coin-mover-history-v3', []),
       preferences: readStored(PREFS_KEY, {}),
       chart: readStored(CHART_KEY, {}),
     };
@@ -68,6 +71,8 @@ export function SettingsPanel({
         ['coin-watch', backup.favorites],
         [ALERTS_KEY, backup.alerts],
         ['coin-alert-history-v2', backup.history],
+        ['coin-mover-settings-v3', backup.movers],
+        ['coin-mover-history-v3', backup.moverHistory],
         [PREFS_KEY, backup.preferences],
         [CHART_KEY, backup.chart],
       ];
@@ -94,9 +99,39 @@ export function SettingsPanel({
   return (
     <details className="settings-panel panel">
       <summary>
-        看板设置与备份 <span className="muted">布局 · 通知 · 导入导出</span>
+        看板设置与备份 <span className="muted">布局 · 通知 · 缓存 · 备份</span>
       </summary>
       <div className="settings-body">
+        <div className="settings-row">
+          <span>币观 v1.1.0</span>
+          <a
+            href="https://github.com/constantin2088/coin-observer/releases/tag/v1.1.0"
+            target="_blank"
+            rel="noreferrer"
+          >
+            查看更新说明
+          </a>
+          <button
+            onClick={() => {
+              const s = cacheStats();
+              setMessage(
+                `行情缓存 ${s.count} 项，约 ${(s.bytes / 1024 / 1024).toFixed(2)} MB`,
+              );
+            }}
+          >
+            查看缓存
+          </button>
+          <button
+            onClick={() => {
+              clearMarketCache();
+              setMessage(
+                '行情缓存已清理，自选、提醒和设置已保留；下次刷新重新获取行情',
+              );
+            }}
+          >
+            清理行情缓存
+          </button>
+        </div>
         <div className="settings-row">
           <span>显示密度</span>
           <button

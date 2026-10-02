@@ -10,6 +10,56 @@ export type Coin = {
   price_change_percentage_7d_in_currency?: number | null;
   sparkline_in_7d?: { price: number[] };
 };
+export function normalizeCoins(input: unknown): Coin[] {
+  if (!Array.isArray(input)) throw new Error('行情格式异常');
+  const numeric = (v: unknown, positive = false): number | null =>
+    typeof v === 'number' && Number.isFinite(v) && (!positive || v >= 0)
+      ? v
+      : null;
+  const result: Coin[] = [];
+  for (const raw of input.slice(0, 500)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const c = raw as Record<string, unknown>;
+    if (
+      typeof c.id !== 'string' ||
+      !/^[a-z0-9-]{1,100}$/.test(c.id) ||
+      typeof c.symbol !== 'string' ||
+      !/^[a-zA-Z0-9._-]{1,30}$/.test(c.symbol)
+    )
+      continue;
+    const spark = c.sparkline_in_7d as { price?: unknown } | undefined;
+    result.push({
+      id: c.id,
+      symbol: c.symbol,
+      name: typeof c.name === 'string' ? c.name.slice(0, 100) : c.symbol,
+      current_price: numeric(c.current_price, true),
+      total_volume: numeric(c.total_volume, true),
+      last_updated:
+        typeof c.last_updated === 'string' &&
+        Number.isFinite(Date.parse(c.last_updated))
+          ? c.last_updated
+          : '',
+      price_change_percentage_1h_in_currency: numeric(
+        c.price_change_percentage_1h_in_currency,
+      ),
+      price_change_percentage_24h_in_currency: numeric(
+        c.price_change_percentage_24h_in_currency,
+      ),
+      price_change_percentage_7d_in_currency: numeric(
+        c.price_change_percentage_7d_in_currency,
+      ),
+      ...(Array.isArray(spark?.price) &&
+      spark.price.length <= 2000 &&
+      spark.price.every(
+        (v) => typeof v === 'number' && Number.isFinite(v) && v > 0,
+      )
+        ? { sparkline_in_7d: { price: spark.price as number[] } }
+        : {}),
+    });
+  }
+  if (!result.length) throw new Error('暂无有效行情');
+  return [...new Map(result.map((c) => [c.id, c])).values()];
+}
 export type Period = '1h' | '24h' | '7d';
 export const PAIRS: Record<string, string> = {
   bitcoin: 'BTC-USDT',
@@ -98,13 +148,12 @@ export function movingAverage(
 ): (number | null)[] {
   if (!Number.isInteger(period) || period < 1)
     throw new Error('Invalid period');
-  return candles.map((_, i) =>
-    i + 1 < period
-      ? null
-      : candles
-          .slice(i + 1 - period, i + 1)
-          .reduce((sum, c) => sum + c.close, 0) / period,
-  );
+  let sum = 0;
+  return candles.map((c, i) => {
+    sum += c.close;
+    if (i >= period) sum -= candles[i - period].close;
+    return i + 1 < period ? null : sum / period;
+  });
 }
 export function percent(coin: Coin, period: Period) {
   return coin[`price_change_percentage_${period}_in_currency`] ?? null;
@@ -143,6 +192,10 @@ export type PriceAlert = {
   symbol: string;
   direction: 'above' | 'below';
   source?: 'coingecko' | 'okx';
+  kind?: 'price' | 'percent';
+  percentTarget?: number;
+  basePrice?: number;
+  paused?: boolean;
   target: number;
   createdAt: number;
   triggeredAt?: number;
@@ -153,9 +206,22 @@ export function validAlert(value: unknown): value is PriceAlert {
   const v = value as PriceAlert;
   return (
     typeof v.id === 'string' &&
+    v.id.length > 0 &&
+    v.id.length <= 100 &&
     typeof v.coinId === 'string' &&
+    /^[a-z0-9-]{1,100}$/.test(v.coinId) &&
     typeof v.symbol === 'string' &&
+    /^[A-Za-z0-9._-]{1,30}$/.test(v.symbol) &&
     (v.source === undefined || ['coingecko', 'okx'].includes(v.source)) &&
+    (v.kind === undefined ||
+      v.kind === 'price' ||
+      (v.kind === 'percent' &&
+        Number.isFinite(v.percentTarget) &&
+        v.percentTarget! > 0 &&
+        v.percentTarget! <= 100 &&
+        Number.isFinite(v.basePrice) &&
+        v.basePrice! > 0)) &&
+    (v.paused === undefined || typeof v.paused === 'boolean') &&
     ['above', 'below'].includes(v.direction) &&
     Number.isFinite(v.target) &&
     v.target > 0 &&
@@ -170,13 +236,14 @@ export function evaluateAlerts(
   now: number,
 ): PriceAlert[] {
   return alerts.map((alert) => {
-    if (alert.triggeredAt) return alert;
+    if (alert.triggeredAt || alert.paused) return alert;
     const c = coins.find((c) => c.id === alert.coinId),
       time = Date.parse(c?.last_updated || '');
     if (
       !c ||
       c.current_price == null ||
       !Number.isFinite(c.current_price) ||
+      c.current_price <= 0 ||
       !Number.isFinite(time) ||
       now - time > 300000 ||
       time > now + 60000

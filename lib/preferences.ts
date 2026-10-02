@@ -1,3 +1,4 @@
+import { pruneCache, clearMarketCache } from './cache';
 import { validAlert } from './market';
 
 export const PREFS_KEY = 'coin-preferences-v2';
@@ -12,10 +13,18 @@ export function readStored<T>(key: string, fallback: T): T {
 }
 export function storeValue(key: string, value: unknown) {
   try {
+    pruneCache(key);
     localStorage.setItem(key, JSON.stringify(value));
+    pruneCache(key);
     return true;
   } catch {
-    return false;
+    try {
+      clearMarketCache(key);
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 export function normalizePreferences(
@@ -67,7 +76,7 @@ export function validateBackup(input: unknown) {
   const v = input as Record<string, unknown>;
   if (
     v.app !== '币观' ||
-    v.version !== 2 ||
+    ![2, 3].includes(Number(v.version)) ||
     !Array.isArray(v.favorites) ||
     !v.favorites.every(
       (x) => typeof x === 'string' && /^[a-z0-9-]{1,100}$/.test(x),
@@ -92,6 +101,35 @@ export function validateBackup(input: unknown) {
           .slice(0, 100)
       : [],
     preferences: normalizePreferences(v.preferences),
+    movers:
+      v.movers && typeof v.movers === 'object'
+        ? {
+            period: ['1h', '5m', '15m'].includes(
+              String((v.movers as Record<string, unknown>).period),
+            )
+              ? (v.movers as Record<string, unknown>).period
+              : '1h',
+            ratio: [0, 1.5, 2, 3].includes(
+              Number((v.movers as Record<string, unknown>).ratio),
+            )
+              ? Number((v.movers as Record<string, unknown>).ratio)
+              : 0,
+          }
+        : { period: '1h', ratio: 0 },
+    moverHistory: Array.isArray(v.moverHistory)
+      ? v.moverHistory
+          .filter(
+            (x) =>
+              x &&
+              typeof x === 'object' &&
+              typeof x.symbol === 'string' &&
+              typeof x.coinId === 'string' &&
+              Number.isFinite(x.change) &&
+              Number.isFinite(x.at) &&
+              ['1h', '5m', '15m'].includes(x.period),
+          )
+          .slice(0, 100)
+      : [],
     chart: {
       bar: ['15m', '1H', '4H', '1D', '1W', '1M', '1Y'].includes(
         String(chart.bar),
@@ -99,6 +137,22 @@ export function validateBackup(input: unknown) {
         ? chart.bar
         : '1H',
       ma: typeof chart.ma === 'boolean' ? chart.ma : true,
+      maFast:
+        Number.isInteger(chart.maFast) &&
+        Number(chart.maFast) >= 2 &&
+        Number(chart.maFast) <= 200
+          ? chart.maFast
+          : 7,
+      maSlow:
+        Number.isInteger(chart.maSlow) &&
+        Number(chart.maSlow) >= 2 &&
+        Number(chart.maSlow) <= 200
+          ? chart.maSlow
+          : 25,
+      indicator: ['none', 'macd', 'rsi'].includes(String(chart.indicator))
+        ? chart.indicator
+        : 'none',
+      precision: chart.precision === 'auto' ? 'auto' : 'integer',
       windowSize:
         typeof chart.windowSize === 'number' &&
         chart.windowSize >= 20 &&

@@ -1,5 +1,8 @@
 'use client';
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { fetchFeed } from '@/lib/client-feed';
+import { MoversPanel } from './movers-panel';
+import { normalizeCoins } from '@/lib/market';
 import { AgentTools } from './agent-tools';
 import { CandleChart } from './candle-chart';
 import { SettingsPanel } from './settings-panel';
@@ -75,8 +78,7 @@ export default function Home() {
     [ready, setReady] = useState(false),
     [now, setNow] = useState(0),
     [offline, setOffline] = useState(false),
-    [cached, setCached] = useState(false),
-    [firstSeen, setFirstSeen] = useState<Record<string, string>>({});
+    [cached, setCached] = useState(false);
   const refreshing = useRef(false);
   const refresh = useCallback(async () => {
     if (refreshing.current) return;
@@ -88,37 +90,35 @@ export default function Home() {
     refreshing.current = true;
     setBusy(true);
     try {
-      const r = await fetch('/api/markets', {
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!r.ok) throw new Error();
-      const d = (await r.json()) as {
+      const d = await fetchFeed<{
         coins: Coin[];
         fetchedAt: string;
         stale?: boolean;
-      };
-      if (
-        !Array.isArray(d.coins) ||
-        !d.coins.length ||
-        !d.coins.every(
-          (c: Coin) => typeof c.id === 'string' && typeof c.symbol === 'string',
-        ) ||
-        !Number.isFinite(Date.parse(d.fetchedAt))
-      )
-        throw new Error();
+        message?: string;
+      }>('/api/markets');
+      d.coins = normalizeCoins(d.coins);
+      if (!Number.isFinite(Date.parse(d.fetchedAt)))
+        throw new Error('行情时间异常');
       setCoins(d.coins);
       setReceived(d.fetchedAt);
       setCached(Boolean(d.stale));
       setOffline(false);
-      setError(d.stale ? '上游行情更新延迟，正在显示最近一次成功数据。' : '');
+      setError(
+        d.stale
+          ? (d.message || '行情更新延迟') + '，正在显示最近一次成功数据。'
+          : '',
+      );
       storeValue('coin-market-cache-v2', {
         coins: d.coins,
         fetchedAt: d.fetchedAt,
       });
-    } catch {
+    } catch (error) {
       setCached(true);
       setOffline(!navigator.onLine);
-      setError('行情暂时无法更新，保留最近数据；联网后会自动重试。');
+      setError(
+        (error instanceof Error ? error.message : '行情暂时无法更新') +
+          '，保留最近数据；稍后自动重试。',
+      );
     } finally {
       refreshing.current = false;
       setBusy(false);
@@ -127,8 +127,14 @@ export default function Home() {
   useEffect(() => {
     try {
       const v = JSON.parse(localStorage.getItem('coin-watch') || 'null');
-      if (Array.isArray(v) && v.every((x) => typeof x === 'string'))
-        setFavorites(v);
+      if (Array.isArray(v))
+        setFavorites(
+          v
+            .filter(
+              (x) => typeof x === 'string' && /^[a-z0-9-]{1,100}$/.test(x),
+            )
+            .slice(0, 500),
+        );
     } catch {}
     const saved = readStored<{ coins: Coin[]; fetchedAt: string } | null>(
       'coin-market-cache-v2',
@@ -137,12 +143,11 @@ export default function Home() {
     if (
       saved &&
       Array.isArray(saved.coins) &&
-      saved.coins.every(
-        (c) => typeof c.id === 'string' && typeof c.symbol === 'string',
-      ) &&
       Number.isFinite(Date.parse(saved.fetchedAt))
     ) {
-      setCoins(saved.coins);
+      try {
+        setCoins(normalizeCoins(saved.coins));
+      } catch {}
       setReceived(saved.fetchedAt);
       setCached(true);
     }
@@ -161,7 +166,6 @@ export default function Home() {
     if (typeof v.excludeStable === 'boolean') setExcludeStable(v.excludeStable);
     if (typeof v.sound === 'boolean') setSound(v.sound);
     if (typeof v.desktop === 'boolean') setDesktop(v.desktop);
-    setFirstSeen(readStored('coin-mover-seen-v2', {}));
     setNow(Date.now());
     setOffline(!navigator.onLine);
     setReady(true);
@@ -223,7 +227,14 @@ export default function Home() {
   useEffect(() => {
     if (!autoRefresh) return;
     const t = setInterval(refresh, 60000);
-    return () => clearInterval(t);
+    const resume = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', resume);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', resume);
+    };
   }, [refresh, autoRefresh]);
   function toggle(id: string) {
     setFavorites((prev) => {
@@ -302,20 +313,6 @@ export default function Home() {
         Math.abs(b.price_change_percentage_1h_in_currency!) -
         Math.abs(a.price_change_percentage_1h_in_currency!),
     );
-  const moverSignature = movers
-    .map((c) => c.id)
-    .sort()
-    .join('|');
-  useEffect(() => {
-    if (!ready || !received || cached || error || offline) return;
-    setFirstSeen((previous) => {
-      const next: Record<string, string> = {};
-      for (const id of moverSignature.split('|').filter(Boolean))
-        next[id] = previous[id] || new Date().toISOString();
-      storeValue('coin-mover-seen-v2', next);
-      return next;
-    });
-  }, [moverSignature, received, ready, cached, error, offline]);
   const delayed = !!received && now - Date.parse(received) > 120000;
   const prices = active?.sparkline_in_7d?.price || [],
     chartData = (period === '24h' ? prices.slice(-24) : prices).map(
@@ -348,6 +345,7 @@ export default function Home() {
         <div className="brand">
           <div className="brand-icon">∿</div>
           <strong>币观</strong>
+          <span className="version-badge">v1.1.0</span>
           <span className="muted">/ 行情观察</span>
         </div>
         <div className="header-right">
@@ -598,102 +596,20 @@ export default function Home() {
             </>
           )}
         </section>
-        <aside className="panel movers">
-          <div className="section-head">
-            <h2>↗ 异动观察</h2>
-            <span className="tag">1h</span>
-          </div>
-          <label className="threshold">
-            涨跌幅绝对值 ≥{' '}
-            <input
-              aria-label="异动百分比阈值"
-              type="number"
-              min="0.1"
-              max="100"
-              step="0.5"
-              value={threshold}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                if (n >= 0.1 && n <= 100) setThreshold(n);
-              }}
-            />{' '}
-            %
-          </label>
-          <div className="mover-filters">
-            <label>
-              24 小时成交额 ≥{' '}
-              <input
-                aria-label="异动最低成交额（亿美元）"
-                type="number"
-                min="0"
-                max="1000000"
-                step="0.1"
-                value={minVolume}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (Number.isFinite(n) && n >= 0 && n <= 1000000)
-                    setMinVolume(n);
-                }}
-              />{' '}
-              亿美元
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={onlyFavorites}
-                onChange={(e) => setOnlyFavorites(e.target.checked)}
-              />{' '}
-              仅看自选
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={excludeStable}
-                onChange={(e) => setExcludeStable(e.target.checked)}
-              />{' '}
-              排除常见稳定币
-            </label>
-          </div>
-          <div className="mover-list">
-            {movers.slice(0, 8).map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setSelected(c.id)}
-                className="mover"
-              >
-                <span
-                  className={
-                    (c.price_change_percentage_1h_in_currency ?? 0) > 0
-                      ? 'up'
-                      : 'down'
-                  }
-                >
-                  {(c.price_change_percentage_1h_in_currency ?? 0) > 0
-                    ? '↗'
-                    : '↘'}
-                </span>
-                <span>
-                  <b>{c.symbol.toUpperCase()}</b>
-                  <small>{money(c.current_price)}</small>
-                  <small>
-                    首次发现{' '}
-                    {firstSeen[c.id] ? beijingTime(firstSeen[c.id]) : '—'}
-                  </small>
-                </span>
-                <Change n={c.price_change_percentage_1h_in_currency} />
-              </button>
-            ))}
-            {!movers.length && (
-              <div className="empty">
-                {coins.length ? '当前没有达到阈值的币种' : '等待行情连接'}
-              </div>
-            )}
-          </div>
-          <p className="muted footnote">
-            观察前 100 币种，最多显示 8
-            个。首次发现记录当前连续满足筛选条件的起点。
-          </p>
-        </aside>
+        <MoversPanel
+          coins={coins}
+          valid={!cached && !error && !offline && !delayed}
+          favorites={favorites}
+          threshold={threshold}
+          setThreshold={setThreshold}
+          minVolume={minVolume}
+          setMinVolume={setMinVolume}
+          onlyFavorites={onlyFavorites}
+          setOnlyFavorites={setOnlyFavorites}
+          excludeStable={excludeStable}
+          setExcludeStable={setExcludeStable}
+          selectCoin={setSelected}
+        />
       </div>
       <section className="panel table-panel">
         <div className="section-head">
@@ -840,7 +756,16 @@ export default function Home() {
         desktop={desktop}
       />
       <footer>
-        <span>币观 · 轻量观察工具</span>
+        <span>
+          币观 v1.1.0 ·{' '}
+          <a
+            href="https://github.com/constantin2088/coin-observer/releases/tag/v1.1.0"
+            target="_blank"
+            rel="noreferrer"
+          >
+            更新说明
+          </a>
+        </span>
         <span>
           数据来自{' '}
           <a
